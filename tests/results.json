@@ -1,0 +1,137 @@
+[
+  {
+    "test": "Impersonation: attacker logs in as player0",
+    "old": {
+      "attacker_got_private_message": true,
+      "real_player0_got_it": false,
+      "forged_vote_accepted_as_player0": true
+    },
+    "new": {
+      "attacker_reply": "denied",
+      "attacker_with_random_key": "AuthError: authentication failed",
+      "real_player0_got_it": true,
+      "auth_failed_count": 2
+    },
+    "old_verdict": "HIJACKED: attacker received player0's private role message and voted as player0",
+    "new_verdict": "BLOCKED: login denied without player0's key; real player0 unaffected"
+  },
+  {
+    "test": "Handshake stall (connect and send nothing)",
+    "old": {
+      "honest_join_seconds_while_stalled": null,
+      "waited": 10,
+      "joined_after_attacker_left": true
+    },
+    "new": {
+      "stalled_connections": 15,
+      "honest_join_seconds": 0.004,
+      "stalled_tls_dropped_after_s": 4.772084431999929,
+      "stalled_tcp_dropped": true,
+      "handshake_timeouts": 5
+    },
+    "old_verdict": "FROZEN: one idle connection blocks the accept loop; nobody can join until it leaves",
+    "new_verdict": "OK: honest player joins in milliseconds; stalled connections are dropped after the 5 s timeout"
+  },
+  {
+    "test": "Malformed JSON during login",
+    "old": {
+      "accept_thread_alive_after_attack": false,
+      "honest_player_joined": false
+    },
+    "new": {
+      "attacker_dropped_after_s": 0.0,
+      "honest_player_joined": true,
+      "protocol_errors": 1
+    },
+    "old_verdict": "CRASHED: the accept thread dies on a JSON error, so no player can ever join again",
+    "new_verdict": "OK: bad frame rejected and the connection dropped; honest players still join"
+  },
+  {
+    "test": "Malformed frame from a logged-in player",
+    "old": {
+      "server_notified_of_disconnect": false,
+      "player3_still_listed_as_connected": true
+    },
+    "new": {
+      "server_sent": [
+        "error",
+        "frame is not valid UTF-8 JSON"
+      ],
+      "leave_event": [
+        [
+          "player3",
+          "__leave__",
+          "{'reason': 'frame is not valid UTF-8 JSON'}"
+        ]
+      ],
+      "player3_still_listed": false
+    },
+    "old_verdict": "ZOMBIE: reader thread dies silently; server still thinks player3 is connected and waits on it",
+    "new_verdict": "OK: player gets an error, is disconnected, and the game receives a __leave__ event"
+  },
+  {
+    "test": "Giant length header (claims a 2 GB message)",
+    "old": {
+      "declared_frame_bytes": 2147483632,
+      "attacker_sent_mb": 426,
+      "server_rss_mb_before": 19,
+      "server_rss_mb_after": 236,
+      "server_cpu_seconds_burned": 7.95,
+      "honest_player_joined": false
+    },
+    "new": {
+      "attacker_dropped_after_s": 0.0,
+      "logged_in_player_sending_1MB_dropped_after_s": 0.051,
+      "server_rss_mb_before": 24,
+      "server_rss_mb_after": 25,
+      "honest_player_joined": true
+    },
+    "old_verdict": "DoS: server buffers everything (memory and CPU climb) and the lobby is blocked",
+    "new_verdict": "OK: frames over 64 KiB are rejected at the header, nothing is buffered"
+  },
+  {
+    "test": "Logged-in player that never reads (slow consumer)",
+    "old": {
+      "broadcasts": 3000,
+      "finished": false,
+      "honest_player_received": 45,
+      "waited_s": 15
+    },
+    "new": {
+      "broadcasts": 3000,
+      "finished_in_s": 0.099,
+      "honest_player_received": 3000,
+      "lazy_player_dropped": true,
+      "slow_consumer_drops": 1
+    },
+    "old_verdict": "FROZEN: server blocks in sendall on the lazy player; everyone else stops getting messages",
+    "new_verdict": "OK: per-player send queue; lazy player is cut off and everyone else gets every message"
+  },
+  {
+    "test": "Message flood from a logged-in player",
+    "old": {
+      "sent": 5000,
+      "accepted_by_server": 5000
+    },
+    "new": {
+      "sent": 5000,
+      "accepted_by_server": 20,
+      "rate_limited": 40,
+      "kicked": true
+    },
+    "old_verdict": "SPAM: every message accepted and relayed",
+    "new_verdict": "LIMITED: token bucket (8 msg/s, burst 20) drops the rest and the flooder is kicked"
+  },
+  {
+    "test": "Fake moderator (attacker runs the server first)",
+    "old": {
+      "fake_server_saw_login": "player0",
+      "client_accepted_fake_message": true
+    },
+    "new": {
+      "client_error": "SSLCertVerificationError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate (_ssl.c:1035)"
+    },
+    "old_verdict": "FOOLED: client logs in to the attacker's socket and trusts its messages",
+    "new_verdict": "REFUSED: certificate does not match the pinned moderator certificate"
+  }
+]
